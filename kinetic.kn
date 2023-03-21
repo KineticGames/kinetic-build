@@ -1,0 +1,9 @@
+name: "kinetic-build"
+version: 0.1.0
+
+dependencies: [
+    {
+      name: "kinetic_notation"
+      version: 1.0.0
+    }
+]

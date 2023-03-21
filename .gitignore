@@ -1,0 +1,20 @@
+# IDEs
+.idea/
+.fleet/
+.vscode/
+
+# build dir
+build/
+cmake-build-*/
+
+# docs
+docs/
+
+# auto generated files
+autogen/
+
+# compile commands used for code completion in e.g. vim & fleet
+compile_commands.json
+
+# clangd cache
+.cache/
