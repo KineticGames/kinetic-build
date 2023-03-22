@@ -1,4 +1,3 @@
-#include "kinetic_notation/definition.h"
 #include <kinetic_notation.h>
 
 // std
@@ -49,13 +48,20 @@ char *get_name() { return "build"; }
 
 int execute(int argc, char *argv[]) {
   if (create_dir("target") == false) {
+    fprintf(stderr, "Could not create directory: \"target\"\n");
     return 1;
   }
 
   char *buffer = read_file_to_buffer("kinetic.kn");
+  if (buffer == NULL) {
+    fprintf(stderr, "Could not read file \"kinetic.kn\"\n");
+    free(buffer);
+    return 1;
+  }
 
   kn_definition *definition = create_definition();
   if (kinetic_notation_parse(definition, buffer) == false) {
+    fprintf(stderr, "Parsing error: %s\n", kinetic_notation_get_error());
     free(buffer);
     kn_definition_destroy(definition);
     return 1;
@@ -78,13 +84,16 @@ static bool get_project(kn_definition *definition, project *project) {
   struct get_string_result name_result =
       kn_definition_get_string(definition, NAME_KEY);
   if (name_result.result != SUCCESS) {
+    fprintf(stderr, "Could not get project name\n");
     return false;
   }
   project->name = name_result.string;
 
   struct get_version_result version_result =
-      kn_definition_get_version(definition, NAME_KEY);
+      kn_definition_get_version(definition, VERSION_KEY);
   if (version_result.result != SUCCESS) {
+    fprintf(stderr, "Could not get project version: %d\n",
+            version_result.result);
     return false;
   }
   project->version = version_result.version;
@@ -92,6 +101,7 @@ static bool get_project(kn_definition *definition, project *project) {
   struct get_object_result lib_result =
       kn_definition_get_object(definition, LIBRARY_KEY);
   if (lib_result.result != SUCCESS && lib_result.result != NOT_FILLED_IN) {
+    fprintf(stderr, "Could not get lib\n");
     return false;
   } else if (lib_result.result == NOT_FILLED_IN) {
     project->is_lib = false;
@@ -100,9 +110,10 @@ static bool get_project(kn_definition *definition, project *project) {
 
     struct get_boolean_result lib_shared_result =
         kn_definition_get_boolean(lib_result.object, NAME_KEY);
-    if (version_result.result == NOT_FILLED_IN) {
+    if (lib_shared_result.result == NOT_FILLED_IN) {
       project->lib.shared = false;
-    } else if (version_result.result != SUCCESS) {
+    } else if (lib_shared_result.result != SUCCESS) {
+      fprintf(stderr, "Could not get lib.shared\n");
       return false;
     }
     project->lib.shared = lib_shared_result.boolean;
@@ -114,6 +125,7 @@ static bool get_project(kn_definition *definition, project *project) {
     project->dependency_count = 0;
     project->dependencies = NULL;
   } else if (length_result.result != SUCCESS) {
+    fprintf(stderr, "Could not get dependency count\n");
     return false;
   } else {
     size_t length = length_result.length;
@@ -127,6 +139,7 @@ static bool get_project(kn_definition *definition, project *project) {
       if (dependency_result.result == SUCCESS) {
         get_dependency(dependency_result.object, &project->dependencies[i]);
       } else {
+        fprintf(stderr, "Could not get dependency %zu\n", i);
         return false;
       }
     }
@@ -174,7 +187,8 @@ static kn_definition *create_definition() {
   kn_definition_add_string(dependency_definition, DEPENDENCY_NAME_KEY);
   kn_definition_add_version(dependency_definition, DEPENDENCY_VERSION_KEY);
   kn_definition_add_string(dependency_definition, DEPENDENCY_URL_KEY);
-  kn_definition_add_object(definition, DEPENDENCIES_KEY, dependency_definition);
+  kn_definition_add_object_array(definition, DEPENDENCIES_KEY,
+                                 dependency_definition);
 
   return definition;
 }
