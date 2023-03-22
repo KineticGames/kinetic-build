@@ -6,6 +6,7 @@
 # build dir
 build/
 cmake-build-*/
+target/
 
 # docs
 docs/
@@ -18,3 +19,6 @@ compile_commands.json
 
 # clangd cache
 .cache/
+
+
+lib/

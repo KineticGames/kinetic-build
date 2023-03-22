@@ -7,11 +7,13 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #define NAME_KEY "name"
 #define VERSION_KEY "version"
+#define FLAGS_KEY "flags"
 
 #define LIBRARY_KEY "lib"
 #define LIBRARY_SHARED_KEY "shared"
@@ -21,21 +23,37 @@
 #define DEPENDENCY_VERSION_KEY "version"
 #define DEPENDENCY_URL_KEY "url"
 
-typedef struct {
+#define MAX_INCLUDE 4096
+#define MAX_COMMAND 8192
+#define MAX_PATH 1024
+
+typedef struct dependency {
   char *name;
   kn_version version;
   char *url;
+  char *include_path;
 } dependency;
+
+typedef struct compile_command {
+  char *directory;
+  char *command;
+  char *file_path;
+  struct compile_command *next;
+} compile_command;
 
 typedef struct {
   char *name;
   kn_version version;
+  char *compile_flags;
   bool is_lib;
   struct {
     bool shared;
   } lib;
+  char *project_dir;
   size_t dependency_count;
   dependency *dependencies;
+  bool include_dir;
+  compile_command *compile_commands;
 } project;
 
 static bool create_dir(const char *dir_name);
@@ -43,15 +61,13 @@ static char *read_file_to_buffer(const char *file_path);
 static kn_definition *create_definition();
 static bool get_dependency(kn_definition *definition, dependency *dependency);
 static bool get_project(kn_definition *definition, project *project);
+static bool clone_dep(dependency *dependency);
+static bool directory_exists(const char *path);
+static bool get_compile_commands(const char *path, project *project);
 
 char *get_name() { return "build"; }
 
 int execute(int argc, char *argv[]) {
-  if (create_dir("target") == false) {
-    fprintf(stderr, "Could not create directory: \"target\"\n");
-    return 1;
-  }
-
   char *buffer = read_file_to_buffer("kinetic.kn");
   if (buffer == NULL) {
     fprintf(stderr, "Could not read file \"kinetic.kn\"\n");
@@ -74,10 +90,190 @@ int execute(int argc, char *argv[]) {
     return 1;
   }
 
+  project.project_dir = realpath(".", NULL);
+
+  if (create_dir("target") == false) {
+    fprintf(stderr, "Could not create directory: \"target\"\n");
+    free(buffer);
+    kn_definition_destroy(definition);
+    return 1;
+  }
+
+  if (create_dir("target/deps") == false) {
+    fprintf(stderr, "Could not create directory: \"target/deps\"\n");
+    free(buffer);
+    kn_definition_destroy(definition);
+    return 1;
+  }
+
+  for (size_t i = 0; i < project.dependency_count; ++i) {
+    clone_dep(&project.dependencies[i]);
+  }
+
+  if (!directory_exists("./src")) {
+    fprintf(stderr, "Could not find 'src' directory\n");
+    free(buffer);
+    kn_definition_destroy(definition);
+    return 1;
+  }
+
+  project.include_dir = directory_exists("./include");
+  project.compile_commands = NULL;
+
+  if (!get_compile_commands("./src", &project)) {
+    fprintf(stderr, "Failed to get compile_commands");
+    free(buffer);
+    kn_definition_destroy(definition);
+    free(project.dependencies);
+    return 1;
+  }
+
+  if (create_dir("target/build") == false) {
+    fprintf(stderr, "Could not create directory: \"target/build\"\n");
+    free(buffer);
+    kn_definition_destroy(definition);
+    return 1;
+  }
+
+  {
+    compile_command *cc = project.compile_commands;
+    while (cc != NULL) {
+      if (system(cc->command) != 0) {
+        fprintf(stderr, "Failed while running: %s\n", cc->command);
+      }
+      cc = cc->next;
+    }
+  }
+
   free(buffer);
   kn_definition_destroy(definition);
+  for (size_t i = 0; i < project.dependency_count; ++i) {
+    free(project.dependencies[i].name);
+    free(project.dependencies[i].url);
+    free(project.dependencies[i].include_path);
+  }
+  free(project.name);
+  free(project.compile_flags);
   free(project.dependencies);
+  free(project.project_dir);
+  compile_command *cc = project.compile_commands;
+  while (cc != NULL) {
+    compile_command *next = cc->next;
+    free(cc->command);
+    free(cc->directory);
+    free(cc->file_path);
+    free(cc);
+    cc = next;
+  }
   return 0;
+}
+
+static bool get_compile_commands(const char *path, project *project) {
+  DIR *dirp;
+  if ((dirp = opendir(path)) == NULL) {
+    fprintf(stderr, "Could not find path: %s\n", path);
+    return false;
+  }
+
+  struct dirent *entry;
+
+  while ((entry = readdir(dirp)) != NULL) {
+    if (entry->d_type == DT_REG) {
+      char *dir_path = realpath(path, NULL);
+      char file_path[MAX_PATH];
+      snprintf(file_path, MAX_PATH, "%s/%s", dir_path, entry->d_name);
+
+      char include[MAX_INCLUDE] = "";
+      if (project->include_dir) {
+        snprintf(include, MAX_INCLUDE, "-I%s/include", project->project_dir);
+      }
+
+      for (size_t i = 0; i < project->dependency_count; ++i) {
+        char new_include[MAX_PATH + 2];
+        snprintf(new_include, MAX_PATH + 2, " -I%s",
+                 project->dependencies[i].include_path);
+        size_t x = MAX_INCLUDE - strlen(include);
+        strncat(include, new_include, x);
+      }
+
+      char command[MAX_COMMAND];
+      snprintf(command, MAX_COMMAND,
+               "/usr/bin/cc %s -I%s/src %s -std=gnu11 -o "
+               "target/build/%s.o -c %s",
+               include, project->project_dir, project->compile_flags,
+               entry->d_name, file_path);
+
+      if (project->compile_commands == NULL) {
+        project->compile_commands = malloc(sizeof(compile_command));
+        project->compile_commands->directory = strdup(dir_path);
+        project->compile_commands->file_path = strdup(file_path);
+        project->compile_commands->command = strdup(command);
+        project->compile_commands->next = NULL;
+      }
+
+      compile_command *cc = project->compile_commands;
+
+      while (cc->next != NULL) {
+        cc = cc->next;
+      }
+
+      cc->next = malloc(sizeof(compile_command));
+      cc->next->directory = strdup(dir_path);
+      cc->next->file_path = strdup(file_path);
+      cc->next->command = strdup(command);
+      cc->next->next = NULL;
+
+      free(dir_path);
+
+    } else if (entry->d_type == DT_DIR) {
+      if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        continue;
+      }
+      char dir_path[MAX_PATH];
+      snprintf(dir_path, MAX_PATH, "%s/%s", path, entry->d_name);
+
+      if (!get_compile_commands(dir_path, project)) {
+        fprintf(stderr, "Could not get files in %s\n", dir_path);
+        closedir(dirp);
+        return false;
+      }
+    }
+  }
+
+  closedir(dirp);
+  return true;
+}
+
+static bool directory_exists(const char *path) {
+  DIR *dir;
+  if ((dir = opendir(path)) == NULL) {
+    return false;
+  }
+  closedir(dir);
+  return true;
+}
+
+static bool clone_dep(dependency *dependency) {
+  char path[MAX_PATH];
+  snprintf(path, MAX_PATH, "./target/deps/%s", dependency->name);
+  if (!directory_exists(path)) {
+    char command[MAX_COMMAND];
+    snprintf(command, MAX_COMMAND, "git clone -q -- %s %s\n", dependency->url,
+             path);
+
+    printf("Downloading: %s\n", dependency->name);
+
+    if (system(command) != 0) {
+      fprintf(stderr, "Download failed: %s\n", command);
+      return false;
+    };
+  }
+
+  char include_path[MAX_PATH + 16];
+  snprintf(include_path, MAX_PATH + 16, "%s/include", path);
+  dependency->include_path = realpath(include_path, NULL);
+
+  return true;
 }
 
 static bool get_project(kn_definition *definition, project *project) {
@@ -97,6 +293,17 @@ static bool get_project(kn_definition *definition, project *project) {
     return false;
   }
   project->version = version_result.version;
+
+  struct get_string_result flags_result =
+      kn_definition_get_string(definition, FLAGS_KEY);
+  if (flags_result.result == NOT_FILLED_IN) {
+    project->compile_flags = "";
+  } else if (flags_result.result != SUCCESS) {
+    fprintf(stderr, "Could not get project flags\n");
+    return false;
+  } else {
+    project->compile_flags = flags_result.string;
+  }
 
   struct get_object_result lib_result =
       kn_definition_get_object(definition, LIBRARY_KEY);
@@ -121,7 +328,7 @@ static bool get_project(kn_definition *definition, project *project) {
 
   struct get_object_array_length_result length_result =
       kn_definition_get_object_array_length(definition, DEPENDENCIES_KEY);
-  if (length_result.result != NOT_FILLED_IN) {
+  if (length_result.result == NOT_FILLED_IN) {
     project->dependency_count = 0;
     project->dependencies = NULL;
   } else if (length_result.result != SUCCESS) {
@@ -137,7 +344,11 @@ static bool get_project(kn_definition *definition, project *project) {
           kn_definition_get_object_from_array_at_index(definition,
                                                        DEPENDENCIES_KEY, i);
       if (dependency_result.result == SUCCESS) {
-        get_dependency(dependency_result.object, &project->dependencies[i]);
+        if (get_dependency(dependency_result.object,
+                           &project->dependencies[i]) == false) {
+          fprintf(stderr, "Issue getting dependency\n");
+          return false;
+        }
       } else {
         fprintf(stderr, "Could not get dependency %zu\n", i);
         return false;
@@ -164,11 +375,11 @@ static bool get_dependency(kn_definition *definition, dependency *dependency) {
   (*dependency).version = version_result.version;
 
   struct get_string_result url_result =
-      kn_definition_get_string(definition, DEPENDENCY_NAME_KEY);
+      kn_definition_get_string(definition, DEPENDENCY_URL_KEY);
   if (url_result.result != SUCCESS) {
     return false;
   }
-  (*dependency).name = url_result.string;
+  (*dependency).url = url_result.string;
 
   return true;
 }
@@ -178,6 +389,7 @@ static kn_definition *create_definition() {
 
   kn_definition_add_string(definition, NAME_KEY);
   kn_definition_add_version(definition, VERSION_KEY);
+  kn_definition_add_string(definition, FLAGS_KEY);
 
   kn_definition *lib_definition = kn_definition_new();
   kn_definition_add_boolean(lib_definition, LIBRARY_SHARED_KEY);
@@ -234,11 +446,13 @@ static bool create_dir(const char *dir_name) {
   DIR *dir;
   if ((dir = opendir(dir_name)) == NULL) {
     if (ENOENT == errno) {
-      mkdir("build", 0777);
+      mkdir(dir_name, 0777);
     } else {
       return false;
     }
   }
+
+  closedir(dir);
 
   return true;
 }
