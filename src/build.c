@@ -179,6 +179,10 @@ static bool get_compile_commands(const char *path, project *project) {
 
   while ((entry = readdir(dirp)) != NULL) {
     if (entry->d_type == DT_REG) {
+      if (entry->d_name[strlen(entry->d_name) - 1] != 'c') {
+        continue;
+      }
+
       char *dir_path = realpath(path, NULL);
       char file_path[MAX_PATH];
       snprintf(file_path, MAX_PATH, "%s/%s", dir_path, entry->d_name);
