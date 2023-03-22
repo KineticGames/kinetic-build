@@ -64,6 +64,7 @@ static bool get_project(kn_definition *definition, project *project);
 static bool clone_dep(dependency *dependency);
 static bool directory_exists(const char *path);
 static bool get_compile_commands(const char *path, project *project);
+static bool create_compile_commands_json(const char *path, project project);
 
 char *get_name() { return "build"; }
 
@@ -135,6 +136,10 @@ int execute(int argc, char *argv[]) {
     return 1;
   }
 
+  if (!create_compile_commands_json("target/compile_commands.json", project)) {
+    fprintf(stderr, "Could not generate 'compile_commands.json'");
+  }
+
   {
     compile_command *cc = project.compile_commands;
     while (cc != NULL) {
@@ -166,6 +171,34 @@ int execute(int argc, char *argv[]) {
     cc = next;
   }
   return 0;
+}
+
+static bool create_compile_commands_json(const char *path, project project) {
+  FILE *fp = fopen(path, "w");
+  if (fp == NULL) {
+    fclose(fp);
+    return false;
+  }
+
+  fprintf(fp, "[");
+
+  compile_command *cc = project.compile_commands;
+
+  while (cc != NULL) {
+    fprintf(
+        fp,
+        "\n{\n\t\"directory\": \"%s\",\n\t\"command\": \"%s\",\n\t\"file\": "
+        "\"%s\"\n}",
+        cc->directory, cc->command, cc->file_path);
+    if (cc->next != NULL) {
+      fprintf(fp, ",");
+    }
+    cc = cc->next;
+  }
+
+  fprintf(fp, "\n]");
+
+  return true;
 }
 
 static bool get_compile_commands(const char *path, project *project) {
