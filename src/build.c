@@ -32,6 +32,7 @@ typedef struct dependency {
   kn_version version;
   char *url;
   char *include_path;
+  char *path;
 } dependency;
 
 typedef struct compile_command {
@@ -63,7 +64,8 @@ static bool get_dependency(kn_definition *definition, dependency *dependency);
 static bool get_project(kn_definition *definition, project *project);
 static bool clone_dep(dependency *dependency);
 static bool directory_exists(const char *path);
-static bool get_compile_commands(const char *path, project *project);
+static bool get_compile_commands(const char *path, const char *src_path,
+                                 project *project);
 static bool create_compile_commands_json(const char *path, project project);
 
 char *get_name() { return "build"; }
@@ -121,12 +123,27 @@ int execute(int argc, char *argv[]) {
   project.include_dir = directory_exists("./include");
   project.compile_commands = NULL;
 
-  if (!get_compile_commands("./src", &project)) {
-    fprintf(stderr, "Failed to get compile_commands");
+  if (!get_compile_commands("./src", realpath("./src", NULL), &project)) {
+    fprintf(stderr, "Failed to get compile_commands\n");
     free(buffer);
     kn_definition_destroy(definition);
     free(project.dependencies);
     return 1;
+  }
+
+  for (size_t i = 0; i < project.dependency_count; ++i) {
+    char source_path[MAX_PATH + 16];
+    snprintf(source_path, MAX_PATH + 16, "%s/src",
+             project.dependencies[i].path);
+
+    if (!get_compile_commands(source_path, source_path, &project)) {
+      fprintf(stderr, "Failed to get compile_commands for dependency: %s\n",
+              project.dependencies[i].name);
+      free(buffer);
+      kn_definition_destroy(definition);
+      free(project.dependencies);
+      return 1;
+    }
   }
 
   if (create_dir("target/build") == false) {
@@ -201,7 +218,8 @@ static bool create_compile_commands_json(const char *path, project project) {
   return true;
 }
 
-static bool get_compile_commands(const char *path, project *project) {
+static bool get_compile_commands(const char *path, const char *src_path,
+                                 project *project) {
   DIR *dirp;
   if ((dirp = opendir(path)) == NULL) {
     fprintf(stderr, "Could not find path: %s\n", path);
@@ -235,10 +253,10 @@ static bool get_compile_commands(const char *path, project *project) {
 
       char command[MAX_COMMAND];
       snprintf(command, MAX_COMMAND,
-               "/usr/bin/cc %s -I%s/src %s -std=gnu11 -o "
+               "/usr/bin/cc %s -I%s %s -std=gnu11 -o "
                "target/build/%s.o -c %s",
-               include, project->project_dir, project->compile_flags,
-               entry->d_name, file_path);
+               include, src_path, project->compile_flags, entry->d_name,
+               file_path);
 
       if (project->compile_commands == NULL) {
         project->compile_commands = malloc(sizeof(compile_command));
@@ -269,7 +287,7 @@ static bool get_compile_commands(const char *path, project *project) {
       char dir_path[MAX_PATH];
       snprintf(dir_path, MAX_PATH, "%s/%s", path, entry->d_name);
 
-      if (!get_compile_commands(dir_path, project)) {
+      if (!get_compile_commands(dir_path, path, project)) {
         fprintf(stderr, "Could not get files in %s\n", dir_path);
         closedir(dirp);
         return false;
@@ -309,6 +327,37 @@ static bool clone_dep(dependency *dependency) {
   char include_path[MAX_PATH + 16];
   snprintf(include_path, MAX_PATH + 16, "%s/include", path);
   dependency->include_path = realpath(include_path, NULL);
+  dependency->path = realpath(path, NULL);
+
+  //  char kinetic_file_path[MAX_PATH];
+  //  snprintf(kinetic_file_path, MAX_PATH, "%s/kinetic.kn", path);
+  //
+  //  char *kinetic_file = read_file_to_buffer(kinetic_file_path);
+  //
+  //  kn_definition *definition = create_definition();
+  //  if (!kinetic_notation_parse(definition, kinetic_file)) {
+  //    return false;
+  //  }
+  //
+  //  struct get_object_array_length_result dependency_count_result =
+  //      kn_definition_get_object_array_length(definition,
+  //      DEPENDENCIES_KEY);
+  //  if (dependency_count_result.result == NOT_FILLED_IN) {
+  //  } else if (dependency_count_result.result != SUCCESS) {
+  //    fprintf(stderr, "Could not get dependencies of %s\n",
+  //    dependency->name); return false;
+  //  }
+  //
+  //  for (size_t i = 0; i < dependency_count_result.length; ++i) {
+  //    struct get_object_at_index_result object_result =
+  //        kn_definition_get_object_from_array_at_index(definition,
+  //                                                     DEPENDENCIES_KEY,
+  //                                                     i);
+  //    if (object_result.result != SUCCESS) {
+  //      fprintf(stderr, "Could not get object at index: %zu\n", i);
+  //      return false;
+  //    }
+  //  }
 
   return true;
 }
