@@ -154,7 +154,7 @@ int execute(int argc, char *argv[]) {
     return 1;
   }
 
-  if (!create_compile_commands_json("target/compile_commands.json", project)) {
+  if (!create_compile_commands_json("compile_commands.json", project)) {
     fprintf(stderr, "Could not generate 'compile_commands.json'");
   }
 
@@ -399,109 +399,103 @@ static bool clone_dep(dependency *dependency) {
 }
 
 static bool get_project(kn_definition *definition, project *project) {
-  struct get_string_result name_result =
-      kn_definition_get_string(definition, NAME_KEY);
-  if (name_result.result != SUCCESS) {
+  if (kn_definition_get_string(definition, NAME_KEY, &project->name) !=
+      SUCCESS) {
     fprintf(stderr, "Could not get project name\n");
     return false;
   }
-  project->name = name_result.string;
 
-  struct get_version_result version_result =
-      kn_definition_get_version(definition, VERSION_KEY);
-  if (version_result.result != SUCCESS) {
-    fprintf(stderr, "Could not get project version: %d\n",
-            version_result.result);
+  if (kn_definition_get_version(definition, VERSION_KEY, &project->version) !=
+      SUCCESS) {
+    fprintf(stderr, "Could not get project version\n");
     return false;
   }
-  project->version = version_result.version;
 
-  struct get_string_result flags_result =
-      kn_definition_get_string(definition, FLAGS_KEY);
-  if (flags_result.result == NOT_FILLED_IN) {
+  switch (kn_definition_get_string(definition, FLAGS_KEY,
+                                   &project->compile_flags)) {
+  case SUCCESS:
+    break;
+  case NOT_FILLED_IN:
     project->compile_flags = strdup("");
-  } else if (flags_result.result != SUCCESS) {
+    break;
+  default:
     fprintf(stderr, "Could not get project flags\n");
     return false;
-  } else {
-    project->compile_flags = flags_result.string;
   }
 
-  struct get_object_result lib_result =
-      kn_definition_get_object(definition, LIBRARY_KEY);
-  if (lib_result.result == NOT_FILLED_IN) {
-    project->is_lib = false;
-  } else if (lib_result.result != SUCCESS) {
-    fprintf(stderr, "Could not get lib\n");
-    return false;
-  } else {
+  kn_definition *lib;
+  switch (kn_definition_get_object(definition, LIBRARY_KEY, &lib)) {
+  case SUCCESS: {
     project->is_lib = true;
 
-    struct get_boolean_result lib_shared_result =
-        kn_definition_get_boolean(lib_result.object, LIBRARY_SHARED_KEY);
-    if (lib_shared_result.result == NOT_FILLED_IN) {
+    switch (kn_definition_get_boolean(lib, LIBRARY_SHARED_KEY,
+                                      &project->lib.shared)) {
+    case NOT_FILLED_IN:
       project->lib.shared = false;
-    } else if (lib_shared_result.result != SUCCESS) {
+      break;
+    case SUCCESS:
+      break;
+    default:
       fprintf(stderr, "Could not get lib.shared\n");
       return false;
     }
-    project->lib.shared = lib_shared_result.boolean;
+    break;
+  }
+  case NOT_FILLED_IN:
+    project->is_lib = false;
+    break;
+  default:
+    fprintf(stderr, "Could not get lib\n");
+    return false;
   }
 
-  struct get_object_array_length_result length_result =
-      kn_definition_get_object_array_length(definition, DEPENDENCIES_KEY);
-  if (length_result.result == NOT_FILLED_IN) {
-    project->dependency_count = 0;
-    project->dependencies = NULL;
-  } else if (length_result.result != SUCCESS) {
-    fprintf(stderr, "Could not get dependency count\n");
-    return false;
-  } else {
-    size_t length = length_result.length;
-    project->dependency_count = length;
-    project->dependencies = calloc(length, sizeof(dependency));
+  switch (kn_definition_get_object_array_length(definition, DEPENDENCIES_KEY,
+                                                &project->dependency_count)) {
+  case SUCCESS:
+    project->dependencies =
+        calloc(project->dependency_count, sizeof(dependency));
 
-    for (size_t i = 0; i < length; ++i) {
-      struct get_object_at_index_result dependency_result =
-          kn_definition_get_object_from_array_at_index(definition,
-                                                       DEPENDENCIES_KEY, i);
-      if (dependency_result.result == SUCCESS) {
-        if (get_dependency(dependency_result.object,
-                           &project->dependencies[i]) == false) {
-          fprintf(stderr, "Issue getting dependency\n");
-          return false;
-        }
-      } else {
+    for (size_t i = 0; i < project->dependency_count; ++i) {
+      kn_definition *dependency;
+      if (kn_definition_get_object_from_array_at_index(
+              definition, DEPENDENCIES_KEY, i, &dependency) != SUCCESS) {
         fprintf(stderr, "Could not get dependency %zu\n", i);
         return false;
       }
+
+      if (get_dependency(dependency, &project->dependencies[i]) == false) {
+        fprintf(stderr, "Issue getting dependency\n");
+        return false;
+      }
     }
+    break;
+  case NOT_FILLED_IN:
+    project->dependency_count = 0;
+    project->dependencies = NULL;
+    break;
+  default:
+    fprintf(stderr, "Could not get dependency count\n");
+    return false;
   }
 
   return true;
 }
 
 static bool get_dependency(kn_definition *definition, dependency *dependency) {
-  struct get_string_result name_result =
-      kn_definition_get_string(definition, DEPENDENCY_NAME_KEY);
-  if (name_result.result != SUCCESS) {
+  if (kn_definition_get_string(definition, DEPENDENCY_NAME_KEY,
+                               &dependency->name) != SUCCESS) {
     return false;
   }
-  (*dependency).name = name_result.string;
 
-  struct get_version_result version_result =
-      kn_definition_get_version(definition, DEPENDENCY_VERSION_KEY);
-  if (version_result.result != SUCCESS) {
+  if (kn_definition_get_version(definition, DEPENDENCY_VERSION_KEY,
+                                &dependency->version) != SUCCESS) {
     return false;
   }
-  (*dependency).version = version_result.version;
 
-  struct get_string_result url_result =
-      kn_definition_get_string(definition, DEPENDENCY_URL_KEY);
-  if (url_result.result != SUCCESS) {
+  if (kn_definition_get_string(definition, DEPENDENCY_URL_KEY,
+                               &dependency->url) != SUCCESS) {
     return false;
   }
-  (*dependency).url = url_result.string;
 
   return true;
 }
