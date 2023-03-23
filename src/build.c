@@ -281,7 +281,7 @@ static bool get_compile_commands(const char *path, const char *src_path,
         strncat(include, new_include, x);
       }
 
-      size_t compile_flags_length = strlen(project->compile_flags + 7);
+      size_t compile_flags_length = strlen(project->compile_flags) + 7;
       char compile_flags[compile_flags_length];
       strcpy(compile_flags, project->compile_flags);
       if (project->is_lib && project->lib.shared) {
