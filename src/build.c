@@ -213,7 +213,6 @@ static bool link_objects(project project) {
              project.project_dir, project.name, project.project_dir);
   }
 
-  printf("Link command: %s\n", link_command);
   if (system(link_command) != 0) {
     return false;
   }
@@ -420,7 +419,7 @@ static bool get_project(kn_definition *definition, project *project) {
   struct get_string_result flags_result =
       kn_definition_get_string(definition, FLAGS_KEY);
   if (flags_result.result == NOT_FILLED_IN) {
-    project->compile_flags = "";
+    strcpy(project->compile_flags, "");
   } else if (flags_result.result != SUCCESS) {
     fprintf(stderr, "Could not get project flags\n");
     return false;
