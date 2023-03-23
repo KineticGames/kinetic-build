@@ -67,6 +67,7 @@ static bool directory_exists(const char *path);
 static bool get_compile_commands(const char *path, const char *src_path,
                                  project *project);
 static bool create_compile_commands_json(const char *path, project project);
+static bool link_objects(project project);
 
 char *get_name() { return "build"; }
 
@@ -167,6 +168,10 @@ int execute(int argc, char *argv[]) {
     }
   }
 
+  if (!link_objects(project)) {
+    fprintf(stderr, "Failed to link\n");
+  }
+
   free(buffer);
   kn_definition_destroy(definition);
   for (size_t i = 0; i < project.dependency_count; ++i) {
@@ -188,6 +193,32 @@ int execute(int argc, char *argv[]) {
     cc = next;
   }
   return 0;
+}
+
+static bool link_objects(project project) {
+  char link_command[MAX_COMMAND];
+  if (project.is_lib) {
+    if (project.lib.shared) {
+      snprintf(link_command, MAX_COMMAND,
+               "/usr/bin/cc -shared -o %s/target/lib%s.so %s/target/build/*.o",
+               project.project_dir, project.name, project.project_dir);
+    } else {
+      snprintf(link_command, MAX_COMMAND,
+               "/usr/bin/ar rcs %s/target/%s %s/target/build/*.o",
+               project.project_dir, project.name, project.project_dir);
+    }
+  } else {
+    snprintf(link_command, MAX_COMMAND,
+             "/usr/bin/cc -std=gnu11 -o %s/target/lib%s.a %s/target/build/*.o",
+             project.project_dir, project.name, project.project_dir);
+  }
+
+  printf("Link command: %s\n", link_command);
+  if (system(link_command) != 0) {
+    return false;
+  }
+
+  return true;
 }
 
 static bool create_compile_commands_json(const char *path, project project) {
@@ -251,12 +282,18 @@ static bool get_compile_commands(const char *path, const char *src_path,
         strncat(include, new_include, x);
       }
 
+      size_t compile_flags_length = strlen(project->compile_flags + 7);
+      char compile_flags[compile_flags_length];
+      strcpy(compile_flags, project->compile_flags);
+      if (project->is_lib && project->lib.shared) {
+        strcat(compile_flags, " -fPIC ");
+      }
+
       char command[MAX_COMMAND];
       snprintf(command, MAX_COMMAND,
                "/usr/bin/cc %s -I%s %s -std=gnu11 -o "
                "target/build/%s.o -c %s",
-               include, src_path, project->compile_flags, entry->d_name,
-               file_path);
+               include, src_path, compile_flags, entry->d_name, file_path);
 
       if (project->compile_commands == NULL) {
         project->compile_commands = malloc(sizeof(compile_command));
@@ -393,16 +430,16 @@ static bool get_project(kn_definition *definition, project *project) {
 
   struct get_object_result lib_result =
       kn_definition_get_object(definition, LIBRARY_KEY);
-  if (lib_result.result != SUCCESS && lib_result.result != NOT_FILLED_IN) {
+  if (lib_result.result == NOT_FILLED_IN) {
+    project->is_lib = false;
+  } else if (lib_result.result != SUCCESS) {
     fprintf(stderr, "Could not get lib\n");
     return false;
-  } else if (lib_result.result == NOT_FILLED_IN) {
-    project->is_lib = false;
   } else {
     project->is_lib = true;
 
     struct get_boolean_result lib_shared_result =
-        kn_definition_get_boolean(lib_result.object, NAME_KEY);
+        kn_definition_get_boolean(lib_result.object, LIBRARY_SHARED_KEY);
     if (lib_shared_result.result == NOT_FILLED_IN) {
       project->lib.shared = false;
     } else if (lib_shared_result.result != SUCCESS) {
