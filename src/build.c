@@ -419,7 +419,7 @@ static bool get_project(kn_definition *definition, project *project) {
   struct get_string_result flags_result =
       kn_definition_get_string(definition, FLAGS_KEY);
   if (flags_result.result == NOT_FILLED_IN) {
-    strcpy(project->compile_flags, "");
+    project->compile_flags = strdup("");
   } else if (flags_result.result != SUCCESS) {
     fprintf(stderr, "Could not get project flags\n");
     return false;
