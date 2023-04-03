@@ -191,7 +191,7 @@ bool compile_dependencies(const char *clone_dir, const char *build_dir) {
     }
 
     char dependency_source_dir[sizeof(dependency_dir) + 4];
-    sprintf(dependency_dir, "%s/src", dependency_dir);
+    sprintf(dependency_source_dir, "%s/src", dependency_dir);
 
     compile_commands dependency_commands = get_compile_commands_for_directory(
         dependency_source_dir, dependency_target_dir, dependency_project);
