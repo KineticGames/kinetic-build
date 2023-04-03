@@ -1,3 +1,4 @@
+#include "directory.h"
 #include "project_definition.h"
 
 // lib
@@ -18,6 +19,8 @@
 #define MAX_COMMAND 8192
 #define MAX_PATH 1024
 
+#define TARGET_DIR_NAME "target"
+
 typedef struct compile_command {
   char *directory;
   char *command;
@@ -25,7 +28,6 @@ typedef struct compile_command {
   struct compile_command *next;
 } compile_command;
 
-static bool create_dir(const char *path);
 static bool directory_exists(const char *path);
 static bool link_objects(kinetic_project project);
 
@@ -37,10 +39,7 @@ int execute(int argc, char *argv[]) {
     return 1;
   }
 
-  // if (create_dir("target") == false) {
-  //   fprintf(stderr, "Could not create directory: \"target\"\n");
-  //   return 1;
-  // }
+  create_dir(TARGET_DIR_NAME);
 
   // if (create_dir("target/deps") == false) {
   //   fprintf(stderr, "Could not create directory: \"target/deps\"\n");
@@ -330,18 +329,3 @@ static bool directory_exists(const char *path) {
 //
 //   return true;
 // }
-
-static bool create_dir(const char *dir_name) {
-  DIR *dir;
-  if ((dir = opendir(dir_name)) == NULL) {
-    if (ENOENT == errno) {
-      mkdir(dir_name, 0777);
-    } else {
-      return false;
-    }
-  }
-
-  closedir(dir);
-
-  return true;
-}
