@@ -32,7 +32,6 @@ typedef struct {
     char *name;
     kn_version version;
     char *url;
-    char *path;
   } *dependencies;
 } kinetic_project;
 

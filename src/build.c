@@ -40,15 +40,6 @@ int execute(int argc, char *argv[]) {
 
   clone_dependencies_to(DEPENDENCY_CLONE_DIR, project);
 
-  // if (create_dir("target/deps") == false) {
-  //   fprintf(stderr, "Could not create directory: \"target/deps\"\n");
-  //   return 1;
-  // }
-
-  // for (size_t i = 0; i < project.dependency_count; ++i) {
-  //   // clone_dep(&project.dependencies[i]);
-  // }
-
   // if (!directory_exists("./src")) {
   //   fprintf(stderr, "Could not find 'src' directory\n");
   //   return 1;

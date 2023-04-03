@@ -136,7 +136,6 @@ void kinetic_project_clear(kinetic_project *project) {
   for (size_t i = 0; i < project->dependency_count; ++i) {
     free(project->dependencies[i].name);
     free(project->dependencies[i].url);
-    free(project->dependencies[i].path);
   }
   free(project->dependencies);
   memset(project, 0, sizeof(kinetic_project));
