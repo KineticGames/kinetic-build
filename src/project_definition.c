@@ -1,6 +1,7 @@
 #include "project_definition.h"
 
 #include "defer.h"
+#include "file_ops.h"
 #include "kinetic_notation/definition.h"
 
 // lib
@@ -12,10 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define file_ops(file, ops)                                                    \
-  FILE *fp;                                                                    \
-  defer(fp = fopen(file, ops), fclose(fp))
 
 static long get_file_length(FILE *fp);
 static char *read_file_to_buffer(char *path);

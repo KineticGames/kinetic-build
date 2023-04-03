@@ -1,6 +1,7 @@
 #include "compile.h"
 
 #include "directory.h"
+#include "file_ops.h"
 
 // std
 #include <dirent.h>
@@ -202,25 +203,27 @@ bool compile_dependencies(const char *clone_dir, const char *build_dir) {
 }
 
 bool generate_compile_commands_json(compile_commands commands) {
-  FILE *fp = fopen("compile_commands.json", "w");
-  if (fp == NULL) {
-    fclose(fp);
-    return false;
-  }
-
-  fprintf(fp, "[");
-
-  for (size_t i = 0; i < commands.command_count; ++i) {
-    fprintf(fp,
-            "\n{\n\t\"directory\": \"%s\",\n\t\"command\": \"%s\",\n\t\"file\":"
-            "\"%s\"\n}",
-            commands.commands[i].directory, commands.commands[i].command,
-            commands.commands[i].file);
-    if (i + 1 < commands.command_count) {
-      fprintf(fp, ",");
+  file_ops("compile_commands.json", "w") {
+    if (fp == NULL) {
+      fclose(fp);
+      return false;
     }
+
+    fprintf(fp, "[");
+
+    for (size_t i = 0; i < commands.command_count; ++i) {
+      fprintf(
+          fp,
+          "\n{\n\t\"directory\": \"%s\",\n\t\"command\": \"%s\",\n\t\"file\":"
+          "\"%s\"\n}",
+          commands.commands[i].directory, commands.commands[i].command,
+          commands.commands[i].file);
+      if (i + 1 < commands.command_count) {
+        fprintf(fp, ",");
+      }
+    }
+    fprintf(fp, "\n]");
   }
-  fprintf(fp, "\n]");
 
   return true;
 }
