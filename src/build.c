@@ -16,8 +16,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define MAX_INCLUDE 4096
-
 #define TARGET_DIR_NAME "./target"
 #define DEPENDENCY_CLONE_DIR "./target/deps"
 
@@ -39,11 +37,6 @@ int execute(int argc, char *argv[]) {
   create_dir(TARGET_DIR_NAME);
 
   clone_dependencies_to(DEPENDENCY_CLONE_DIR, project);
-
-  // if (!directory_exists("./src")) {
-  //   fprintf(stderr, "Could not find 'src' directory\n");
-  //   return 1;
-  // }
 
   // if (!get_compile_commands("./src", realpath("./src", NULL), &project))
   // {
@@ -149,94 +142,6 @@ int execute(int argc, char *argv[]) {
 //
 //   fprintf(fp, "\n]");
 //
-//   return true;
-// }
-
-// static bool get_compile_commands(const char *path, const char *src_path,
-//                                  kinetic_project *project) {
-//   DIR *dirp;
-//   if ((dirp = opendir(path)) == NULL) {
-//     fprintf(stderr, "Could not find path: %s\n", path);
-//     return false;
-//   }
-//
-//   struct dirent *entry;
-//
-//   while ((entry = readdir(dirp)) != NULL) {
-//     if (entry->d_type == DT_REG) {
-//       if (entry->d_name[strlen(entry->d_name) - 1] != 'c') {
-//         continue;
-//       }
-//
-//       char *dir_path = realpath(path, NULL);
-//       char file_path[MAX_PATH];
-//       snprintf(file_path, MAX_PATH, "%s/%s", dir_path, entry->d_name);
-//
-//       char include[MAX_INCLUDE] = "";
-//       if (project->include_dir) {
-//         snprintf(include, MAX_INCLUDE, "-I%s/include", project->project_dir);
-//       }
-//
-//       for (size_t i = 0; i < project->dependency_count; ++i) {
-//         char new_include[MAX_PATH + 2];
-//         snprintf(new_include, MAX_PATH + 2, " -I%s",
-//                  project->dependencies[i].include_path);
-//         size_t x = MAX_INCLUDE - strlen(include);
-//         strncat(include, new_include, x);
-//       }
-//
-//       size_t compile_flags_length = strlen(project->compile_flags) + 7;
-//       char compile_flags[compile_flags_length];
-//       strcpy(compile_flags, project->compile_flags);
-//       if (project->is_lib && project->lib.shared) {
-//         strcat(compile_flags, " -fPIC ");
-//       }
-//
-//       char command[MAX_COMMAND];
-//       snprintf(command, MAX_COMMAND,
-//                "/usr/bin/cc %s -I%s %s -std=gnu11 -o "
-//                "target/build/%s.o -c %s",
-//                include, src_path, compile_flags, entry->d_name, file_path);
-//
-//       if (project->compile_commands == NULL) {
-//         project->compile_commands = malloc(sizeof(compile_command));
-//         project->compile_commands->directory = strdup(dir_path);
-//         project->compile_commands->file_path = strdup(file_path);
-//         project->compile_commands->command = strdup(command);
-//         project->compile_commands->next = NULL;
-//       }
-//
-//       compile_command *cc = project->compile_commands;
-//
-//       while (cc->next != NULL) {
-//         cc = cc->next;
-//       }
-//
-//       cc->next = malloc(sizeof(compile_command));
-//       cc->next->directory = strdup(dir_path);
-//       cc->next->file_path = strdup(file_path);
-//       cc->next->command = strdup(command);
-//       cc->next->next = NULL;
-//
-//       free(dir_path);
-//
-//     } else if (entry->d_type == DT_DIR) {
-//       if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") ==
-//       0) {
-//         continue;
-//       }
-//       char dir_path[MAX_PATH];
-//       snprintf(dir_path, MAX_PATH, "%s/%s", path, entry->d_name);
-//
-//       if (!get_compile_commands(dir_path, path, project)) {
-//         fprintf(stderr, "Could not get files in %s\n", dir_path);
-//         closedir(dirp);
-//         return false;
-//       }
-//     }
-//   }
-//
-//   closedir(dirp);
 //   return true;
 // }
 
