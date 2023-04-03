@@ -1,3 +1,4 @@
+#include "compile.h"
 #include "dependencies.h"
 #include "directory.h"
 #include "project_definition.h"
@@ -16,15 +17,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define TARGET_DIR_NAME "./target"
+#define TARGET_DIR "./target"
 #define DEPENDENCY_CLONE_DIR "./target/deps"
-
-typedef struct compile_command {
-  char *directory;
-  char *command;
-  char *file_path;
-  struct compile_command *next;
-} compile_command;
+#define BUILD_DIR "./target/build"
 
 char *get_name() { return "build"; }
 
@@ -34,52 +29,22 @@ int execute(int argc, char *argv[]) {
     return 1;
   }
 
-  create_dir(TARGET_DIR_NAME);
+  create_dir(TARGET_DIR);
 
   clone_dependencies_to(DEPENDENCY_CLONE_DIR, project);
+  create_dir(BUILD_DIR);
 
-  // if (!get_compile_commands("./src", realpath("./src", NULL), &project))
-  // {
-  //   fprintf(stderr, "Failed to get compile_commands\n");
-  //   return 1;
-  // }
+  char project_build_dir[sizeof(BUILD_DIR) + sizeof(project.name) + 1];
+  sprintf(project_build_dir, "%s/%s", BUILD_DIR, project.name);
+  compile_commands project_compile_commands =
+      get_compile_commands_for_directory("./src", project_build_dir, project);
 
-  // for (size_t i = 0; i < project.dependency_count; ++i) {
-  //   char source_path[MAX_PATH + 16];
-  //   snprintf(source_path, MAX_PATH + 16, "%s/src",
-  //            project.dependencies[i].path);
+  create_dir("target/build");
 
-  //  if (!get_compile_commands(source_path, source_path, &project)) {
-  //    fprintf(stderr, "Failed to get compile_commands for dependency:
-  //    %s\n",
-  //            project.dependencies[i].name);
-  //    free(buffer);
-  //    kn_definition_destroy(definition);
-  //    free(project.dependencies);
-  //    return 1;
-  //  }
-  //}
+  compile_dependencies(DEPENDENCY_CLONE_DIR, BUILD_DIR);
+  run_commands(project_compile_commands);
 
-  // if (create_dir("target/build") == false) {
-  //   fprintf(stderr, "Could not create directory: \"target/build\"\n");
-  //   free(buffer);
-  //   kn_definition_destroy(definition);
-  //   return 1;
-  // }
-
-  // if (!create_compile_commands_json("compile_commands.json", project)) {
-  //   fprintf(stderr, "Could not generate 'compile_commands.json'");
-  // }
-
-  //{
-  //  compile_command *cc = project.compile_commands;
-  //  while (cc != NULL) {
-  //    if (system(cc->command) != 0) {
-  //      fprintf(stderr, "Failed while running: %s\n", cc->command);
-  //    }
-  //    cc = cc->next;
-  //  }
-  //}
+  generate_compile_commands_json(project_compile_commands);
 
   // if (!link_objects(project)) {
   //   fprintf(stderr, "Failed to link\n");
@@ -110,55 +75,6 @@ int execute(int argc, char *argv[]) {
 //   }
 //
 //   if (system(link_command) != 0) {
-//     return false;
-//   }
-//
-//   return true;
-// }
-
-// static bool create_compile_commands_json(const char *path,
-//                                          kinetic_project project) {
-//   FILE *fp = fopen(path, "w");
-//   if (fp == NULL) {
-//     fclose(fp);
-//     return false;
-//   }
-//
-//   fprintf(fp, "[");
-//
-//   compile_command *cc = project.compile_commands;
-//
-//   while (cc != NULL) {
-//     fprintf(
-//         fp,
-//         "\n{\n\t\"directory\": \"%s\",\n\t\"command\": \"%s\",\n\t\"file\": "
-//         "\"%s\"\n}",
-//         cc->directory, cc->command, cc->file_path);
-//     if (cc->next != NULL) {
-//       fprintf(fp, ",");
-//     }
-//     cc = cc->next;
-//   }
-//
-//   fprintf(fp, "\n]");
-//
-//   return true;
-// }
-
-// static bool get_dependency(kn_definition *definition, dependency *dependency)
-// {
-//   if (kn_definition_get_string(definition, DEPENDENCY_NAME_KEY,
-//                                &dependency->name) != SUCCESS) {
-//     return false;
-//   }
-//
-//   if (kn_definition_get_version(definition, DEPENDENCY_VERSION_KEY,
-//                                 &dependency->version) != SUCCESS) {
-//     return false;
-//   }
-//
-//   if (kn_definition_get_string(definition, DEPENDENCY_URL_KEY,
-//                                &dependency->url) != SUCCESS) {
 //     return false;
 //   }
 //

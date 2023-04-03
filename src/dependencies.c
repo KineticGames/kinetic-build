@@ -15,7 +15,11 @@ bool clone_dependencies_to(const char *path, kinetic_project project) {
 
   for (size_t i = 0; i < project.dependency_count; ++i) {
     char clone_path[MAX_PATH];
-    snprintf(clone_path, MAX_PATH, "%s/%s", path, project.dependencies[i].name);
+    snprintf(clone_path, MAX_PATH, "%s/%s-%zu_%zu_%zu", path,
+             project.dependencies[i].name,
+             project.dependencies[i].version.major,
+             project.dependencies[i].version.minor,
+             project.dependencies[i].version.patch);
     if (!directory_exists(clone_path)) {
       char command[MAX_COMMAND];
       snprintf(command, MAX_COMMAND, "git clone -q -- %s %s\n",
