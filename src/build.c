@@ -1,3 +1,4 @@
+#include "dependencies.h"
 #include "directory.h"
 #include "project_definition.h"
 
@@ -16,10 +17,9 @@
 #include <sys/types.h>
 
 #define MAX_INCLUDE 4096
-#define MAX_COMMAND 8192
-#define MAX_PATH 1024
 
-#define TARGET_DIR_NAME "target"
+#define TARGET_DIR_NAME "./target"
+#define DEPENDENCY_CLONE_DIR "./target/deps"
 
 typedef struct compile_command {
   char *directory;
@@ -27,9 +27,6 @@ typedef struct compile_command {
   char *file_path;
   struct compile_command *next;
 } compile_command;
-
-static bool directory_exists(const char *path);
-static bool link_objects(kinetic_project project);
 
 char *get_name() { return "build"; }
 
@@ -40,6 +37,8 @@ int execute(int argc, char *argv[]) {
   }
 
   create_dir(TARGET_DIR_NAME);
+
+  clone_dependencies_to(DEPENDENCY_CLONE_DIR, project);
 
   // if (create_dir("target/deps") == false) {
   //   fprintf(stderr, "Could not create directory: \"target/deps\"\n");
@@ -55,7 +54,8 @@ int execute(int argc, char *argv[]) {
   //   return 1;
   // }
 
-  // if (!get_compile_commands("./src", realpath("./src", NULL), &project)) {
+  // if (!get_compile_commands("./src", realpath("./src", NULL), &project))
+  // {
   //   fprintf(stderr, "Failed to get compile_commands\n");
   //   return 1;
   // }
@@ -66,7 +66,8 @@ int execute(int argc, char *argv[]) {
   //            project.dependencies[i].path);
 
   //  if (!get_compile_commands(source_path, source_path, &project)) {
-  //    fprintf(stderr, "Failed to get compile_commands for dependency: %s\n",
+  //    fprintf(stderr, "Failed to get compile_commands for dependency:
+  //    %s\n",
   //            project.dependencies[i].name);
   //    free(buffer);
   //    kn_definition_destroy(definition);
@@ -104,30 +105,32 @@ int execute(int argc, char *argv[]) {
   return 0;
 }
 
-static bool link_objects(kinetic_project project) {
-  char link_command[MAX_COMMAND];
-  if (project.is_lib) {
-    if (project.lib.shared) {
-      snprintf(link_command, MAX_COMMAND,
-               "/usr/bin/cc -shared -o %s/target/lib%s.so %s/target/build/*.o",
-               project.project_dir, project.name, project.project_dir);
-    } else {
-      snprintf(link_command, MAX_COMMAND,
-               "/usr/bin/ar rcs %s/target/%s %s/target/build/*.o",
-               project.project_dir, project.name, project.project_dir);
-    }
-  } else {
-    snprintf(link_command, MAX_COMMAND,
-             "/usr/bin/cc -std=gnu11 -o %s/target/lib%s.a %s/target/build/*.o",
-             project.project_dir, project.name, project.project_dir);
-  }
-
-  if (system(link_command) != 0) {
-    return false;
-  }
-
-  return true;
-}
+// static bool link_objects(kinetic_project project) {
+//   char link_command[MAX_COMMAND];
+//   if (project.is_lib) {
+//     if (project.lib.shared) {
+//       snprintf(link_command, MAX_COMMAND,
+//                "/usr/bin/cc -shared -o %s/target/lib%s.so
+//                %s/target/build/*.o", project.project_dir, project.name,
+//                project.project_dir);
+//     } else {
+//       snprintf(link_command, MAX_COMMAND,
+//                "/usr/bin/ar rcs %s/target/%s %s/target/build/*.o",
+//                project.project_dir, project.name, project.project_dir);
+//     }
+//   } else {
+//     snprintf(link_command, MAX_COMMAND,
+//              "/usr/bin/cc -std=gnu11 -o %s/target/lib%s.a
+//              %s/target/build/*.o", project.project_dir, project.name,
+//              project.project_dir);
+//   }
+//
+//   if (system(link_command) != 0) {
+//     return false;
+//   }
+//
+//   return true;
+// }
 
 // static bool create_compile_commands_json(const char *path,
 //                                          kinetic_project project) {
@@ -243,70 +246,6 @@ static bool link_objects(kinetic_project project) {
 //   }
 //
 //   closedir(dirp);
-//   return true;
-// }
-
-static bool directory_exists(const char *path) {
-  DIR *dir;
-  if ((dir = opendir(path)) == NULL) {
-    return false;
-  }
-  closedir(dir);
-  return true;
-}
-
-// static bool clone_dep(dependency *dependency) {
-//   char path[MAX_PATH];
-//   snprintf(path, MAX_PATH, "./target/deps/%s", dependency->name);
-//   if (!directory_exists(path)) {
-//     char command[MAX_COMMAND];
-//     snprintf(command, MAX_COMMAND, "git clone -q -- %s %s\n",
-//     dependency->url,
-//              path);
-//
-//     printf("Downloading: %s\n", dependency->name);
-//
-//     if (system(command) != 0) {
-//       fprintf(stderr, "Download failed: %s\n", command);
-//       return false;
-//     };
-//   }
-//
-//   char include_path[MAX_PATH + 16];
-//   snprintf(include_path, MAX_PATH + 16, "%s/include", path);
-//   dependency->include_path = realpath(include_path, NULL);
-//   dependency->path = realpath(path, NULL);
-//
-//     char kinetic_file_path[MAX_PATH];
-//     snprintf(kinetic_file_path, MAX_PATH, "%s/kinetic.kn", path);
-//
-//     char *kinetic_file = read_file_to_buffer(kinetic_file_path);
-//
-//     kn_definition *definition = create_definition();
-//     if (!kinetic_notation_parse(definition, kinetic_file)) {
-//       return false;
-//     }
-//
-//     struct get_object_array_length_result dependency_count_result =
-//         kn_definition_get_object_array_length(definition,
-//         DEPENDENCIES_KEY);
-//     if (dependency_count_result.result == NOT_FILLED_IN) {
-//     } else if (dependency_count_result.result != SUCCESS) {
-//       fprintf(stderr, "Could not get dependencies of %s\n",
-//       dependency->name); return false;
-//     }
-//
-//     for (size_t i = 0; i < dependency_count_result.length; ++i) {
-//       struct get_object_at_index_result object_result =
-//           kn_definition_get_object_from_array_at_index(definition,
-//                                                        DEPENDENCIES_KEY,
-//                                                        i);
-//       if (object_result.result != SUCCESS) {
-//         fprintf(stderr, "Could not get object at index: %zu\n", i);
-//         return false;
-//       }
-//     }
-//
 //   return true;
 // }
 
