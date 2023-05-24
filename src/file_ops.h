@@ -6,8 +6,8 @@
 // std
 #include <stdio.h>
 
-#define file_ops(file, ops)                                                    \
-  FILE *fp;                                                                    \
-  defer(fp = fopen(file, ops), fclose(fp))
+#define file_ops(file, ops)                                                                                            \
+	FILE *fp;                                                                                                          \
+	defer(fp = fopen(file, ops), fclose(fp))
 
 #endif // KINETIC_BUILD_FILE_OPS_H
