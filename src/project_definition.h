@@ -20,19 +20,19 @@
 #define DEPENDENCY_URL_KEY "url"
 
 typedef struct {
-  char *project_dir;
-  char *name;
-  kn_version version;
-  bool is_lib;
-  struct {
-    bool shared;
-  } lib;
-  size_t dependency_count;
-  struct dependency {
-    char *name;
-    kn_version version;
-    char *url;
-  } *dependencies;
+	char *project_dir;
+	char *name;
+	kn_version version;
+	bool is_lib;
+	struct {
+		bool shared;
+	} lib;
+	size_t dependency_count;
+	struct dependency {
+		char *name;
+		kn_version version;
+		char *url;
+	} *dependencies;
 } kinetic_project;
 
 kn_definition *kinetic_project_create_definition();
