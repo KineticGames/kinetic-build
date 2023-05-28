@@ -1,12 +1,8 @@
 name: "kinetic-build"
 version: 0.1.0
-
-flags: "-g -Wall"
-
 lib: {
   shared: true
 }
-
 dependencies: [
   {
     name: "kinetic_notation"
