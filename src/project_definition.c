@@ -43,69 +43,89 @@ kn_definition *kinetic_project_create_definition() {
 	return definition;
 }
 
-bool kinetic_project_from_dir(char *dir_path, kinetic_project *project) {
-	project->project_dir = realpath(dir_path, NULL);
+bool kinetic_project_from_dir(const char *dir_path, kinetic_project *out_project) {
+	out_project->project_dir = realpath(dir_path, NULL);
 
-	// Build the path to the project file
-	size_t project_file_path_length = strlen(project->project_dir) + 12;
+	// Build the path to the out_project file
+	size_t project_file_path_length = strlen(out_project->project_dir) + 12;
 	char project_file_path[project_file_path_length];
-	snprintf(project_file_path, project_file_path_length, "%s/kinetic.kn", project->project_dir);
+	snprintf(project_file_path, project_file_path_length, "%s/kinetic.kn", out_project->project_dir);
 
 	kn_definition *project_definition = read_project_file(project_file_path);
 
-	if (kn_definition_get_string(project_definition, NAME_KEY, &project->name) != SUCCESS) { return false; }
+	if (kn_definition_get_string(project_definition, NAME_KEY, &out_project->name) != SUCCESS) {
+		fprintf(stderr, "Something went wrong processing %s", NAME_KEY);
+		return false;
+	}
 
-	if (kn_definition_get_version(project_definition, VERSION_KEY, &project->version) != SUCCESS) { return false; }
+	if (kn_definition_get_version(project_definition, VERSION_KEY, &out_project->version) != SUCCESS) {
+		fprintf(stderr, "Something went wrong processing %s", VERSION_KEY);
+		return false;
+	}
 
 	kn_definition *lib_definition;
 	switch (kn_definition_get_object(project_definition, LIBRARY_KEY, &lib_definition)) {
 		case SUCCESS:
-			switch (kn_definition_get_boolean(lib_definition, LIBRARY_SHARED_KEY, &project->lib.shared)) {
+			out_project->is_lib = true;
+			switch (kn_definition_get_boolean(lib_definition, LIBRARY_SHARED_KEY, &out_project->lib.shared)) {
 				case SUCCESS:
 					break;
 				case NOT_FILLED_IN:
-					project->lib.shared = false;
+					out_project->lib.shared = false;
 					break;
 				default:
+					fprintf(stderr, "Something went wrong processing %s\n", LIBRARY_SHARED_KEY);
 					return false;
 			}
 			break;
 		case NOT_FILLED_IN:
-			project->is_lib = false;
+			out_project->is_lib = false;
 			break;
 		default:
+			fprintf(stderr, "Something went wrong processing %s\n", LIBRARY_KEY);
 			return false;
 	}
 
-	if (kn_definition_get_object_array_length(project_definition, DEPENDENCIES_KEY, &project->dependency_count)
-		!= SUCCESS) {
+	kn_query_result result =
+		kn_definition_get_object_array_length(project_definition, DEPENDENCIES_KEY, &out_project->dependency_count);
+	if (result == NOT_FILLED_IN) {
+		out_project->dependency_count = 0;
+	} else if (result != SUCCESS) {
+		fprintf(stderr, "Something went wrong processing %s\n", DEPENDENCIES_KEY);
 		return false;
 	}
 
-	project->dependencies = calloc(project->dependency_count, sizeof(struct dependency));
+	out_project->dependencies = calloc(out_project->dependency_count, sizeof(struct dependency));
 
-	for (size_t i = 0; i < project->dependency_count; ++i) {
+	for (size_t i = 0; i < out_project->dependency_count; ++i) {
 		kn_definition *dependency_definition;
 		if (kn_definition_get_object_from_array_at_index(project_definition,
 														 DEPENDENCIES_KEY,
 														 i,
 														 &dependency_definition)
 			!= SUCCESS) {
+			fprintf(stderr, "Something went wrong processing %s\n", DEPENDENCIES_KEY);
 			return false;
 		}
 
-		if (kn_definition_get_string(dependency_definition, DEPENDENCY_NAME_KEY, &project->dependencies[i].name)
+		if (kn_definition_get_string(dependency_definition, DEPENDENCY_NAME_KEY, &out_project->dependencies[i].name)
 			!= SUCCESS) {
+			fprintf(stderr, "Something went wrong processing %s\n", DEPENDENCY_NAME_KEY);
 			return false;
 		}
 
-		if (kn_definition_get_version(dependency_definition, DEPENDENCY_VERSION_KEY, &project->dependencies[i].version)
+		if (kn_definition_get_version(dependency_definition,
+									  DEPENDENCY_VERSION_KEY,
+									  &out_project->dependencies[i].version)
 			!= SUCCESS) {
+			fprintf(stderr, "Something went wrong processing %s\n", DEPENDENCY_VERSION_KEY);
 			return false;
 		}
 
-		if (kn_definition_get_string(dependency_definition, DEPENDENCY_URL_KEY, &project->dependencies[i].url)
+		if (kn_definition_get_string(dependency_definition, DEPENDENCY_URL_KEY, &out_project->dependencies[i].url)
 			!= SUCCESS) {
+			fprintf(stderr, "Something went wrong processing %s\n", DEPENDENCY_URL_KEY);
+			fprintf(stderr, "%s\n", kinetic_notation_get_error());
 			return false;
 		}
 	}
@@ -117,6 +137,8 @@ bool kinetic_project_from_dir(char *dir_path, kinetic_project *project) {
 
 void kinetic_project_clear(kinetic_project *project) {
 	free(project->project_dir);
+	free(project->target_dir);
+	free(project->build_dir);
 	free(project->name);
 	for (size_t i = 0; i < project->dependency_count; ++i) {
 		free(project->dependencies[i].name);

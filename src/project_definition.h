@@ -21,6 +21,8 @@
 
 typedef struct {
 	char *project_dir;
+	char *target_dir;
+	char *build_dir;
 	char *name;
 	kn_version version;
 	bool is_lib;
@@ -37,7 +39,7 @@ typedef struct {
 
 kn_definition *kinetic_project_create_definition();
 
-bool kinetic_project_from_dir(char *dir_path, kinetic_project *project);
+bool kinetic_project_from_dir(const char *dir_path, kinetic_project *out_project);
 
 void kinetic_project_clear(kinetic_project *project);
 

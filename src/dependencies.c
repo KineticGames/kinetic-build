@@ -38,7 +38,7 @@ bool clone_dependencies_to(const char *path, kinetic_project project) {
 
 		kinetic_project dependency_project;
 		if (!kinetic_project_from_dir(clone_path, &dependency_project)) {
-			fprintf(stderr, "Dependency %s is not a kinetic project!", project.dependencies[i].name);
+			fprintf(stderr, "Dependency %s is not a kinetic project!\n", project.dependencies[i].name);
 			success = false;
 			continue;
 		}

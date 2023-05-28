@@ -17,7 +17,12 @@ typedef struct {
 	compile_command *commands;
 } compile_commands;
 
-compile_commands get_compile_commands_for_directory(const char *path, const char *target_path, kinetic_project project);
+bool get_compile_commands_for_directory(const char *source_path,
+										const char *target_path,
+										bool is_subdir,
+										const char *object_file_prefix,
+										kinetic_project project,
+										compile_commands *out_commands);
 void combine_compile_commands(compile_commands *dest, compile_commands source);
 bool compile_dependencies(const char *clone_dir, const char *build_dir);
 bool generate_compile_commands_json(compile_commands commands);

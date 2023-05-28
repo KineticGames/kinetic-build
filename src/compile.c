@@ -34,17 +34,29 @@ struct command {
 	struct command *next;
 };
 
-compile_commands
-get_compile_commands_for_directory(const char *path, const char *target_path, kinetic_project project) {
-	if (!directory_exists(path)) {
-		fprintf(stderr, "Could not find directory: '%s'", path);
-		return (compile_commands){.command_count = 0, .commands = NULL};
+bool get_compile_commands_for_directory(const char *source_path,
+										const char *target_path,
+										bool is_subdir,
+										const char *object_file_prefix,
+										kinetic_project project,
+										compile_commands *out_commands) {
+	char *full_source_path = realpath(source_path, NULL);
+
+	if (!create_dir(target_path)) {
+		fprintf(stderr, "Failed to create: %s", target_path);
+		return false;
+	}
+	char *full_target_path = realpath(target_path, NULL);
+
+	if (!directory_exists(full_source_path)) {
+		fprintf(stderr, "Could not find directory: '%s'", source_path);
+		return false;
 	}
 
 	DIR *dir;
-	if ((dir = opendir(path)) == NULL) {
-		fprintf(stderr, "Could not open directory: '%s'", path);
-		return (compile_commands){.command_count = 0, .commands = NULL};
+	if ((dir = opendir(full_source_path)) == NULL) {
+		fprintf(stderr, "Could not open directory: '%s'", source_path);
+		return false;
 	}
 
 	char includes[MAX_INCLUDE] = "";
@@ -71,25 +83,25 @@ get_compile_commands_for_directory(const char *path, const char *target_path, ki
 	strcpy(compile_flags, COMPILE_FLAGS);
 	if (project.is_lib && project.lib.shared) { strcat(compile_flags, " -fPIC "); }
 
-	compile_commands commands = {0};
-
-	struct command *first_command = NULL;
-	struct command *command       = NULL;
-	size_t command_count          = 0;
+	struct command *first_command        = NULL;
+	struct command *command              = NULL;
+	size_t command_count                 = 0;
+	compile_commands all_subdir_commands = {};
 
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
 		switch (entry->d_type) {
 			case DT_REG: {
 				const char *dot = strrchr(entry->d_name, '.');
-				if (!dot || *(dot + sizeof(char)) != 'c' || *(dot + 2 * sizeof(char)) != '\0') { continue; }
+				if (strcmp(dot, ".c") != 0) { continue; }
 
-				char source_file[strlen(path) + strlen(entry->d_name) + 1];
-				sprintf(source_file, "%s/%s", path, entry->d_name);
+				char source_file[strlen(full_source_path) + strlen(entry->d_name) + 1];
+				sprintf(source_file, "%s/%s", full_source_path, entry->d_name);
 
-				size_t name_len = entry->d_name - dot;
+				size_t name_len = (void *)dot - (void *)&entry->d_name + 1;
+				if (is_subdir) { name_len += strlen(object_file_prefix); }
 				char file_name_woe[name_len];
-				snprintf(file_name_woe, name_len, "%s", entry->d_name);
+				snprintf(file_name_woe, name_len, "%s%s", is_subdir ? object_file_prefix : "", entry->d_name);
 
 				if (first_command == NULL) {
 					first_command = calloc(1, sizeof(struct command));
@@ -102,61 +114,80 @@ get_compile_commands_for_directory(const char *path, const char *target_path, ki
 				command->command = calloc(MAX_COMMAND, sizeof(char));
 				snprintf(command->command,
 						 MAX_COMMAND,
-						 "/usr/bin/cc %s -I%s/src %s -std=gnu11 -o "
-						 "%s/%s.o -c %s",
+						 "/usr/bin/cc %s -I%s/src %s -std=gnu11 -o %s/%s.o -c %s",
 						 includes,
 						 project.project_dir,
 						 compile_flags,
-						 target_path,
+						 full_target_path,
 						 file_name_woe,
 						 source_file);
 
 				command->file      = strdup(source_file);
-				command->directory = strdup(path);
+				command->directory = strdup(source_path);
 
 				command_count++;
-
-				break;
-			}
-			case DT_DIR:
+			} break;
+			case DT_DIR: {
 				if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) { continue; }
 
 				char subdir_path[MAX_PATH];
-				snprintf(subdir_path, MAX_PATH, "%s/%s", path, entry->d_name);
+				snprintf(subdir_path, MAX_PATH, "%s/%s", source_path, entry->d_name);
 
-				char new_target_path[MAX_PATH];
-				snprintf(new_target_path, MAX_PATH, "%s/%s", target_path, entry->d_name);
+				size_t subdir_prefix_length = strlen(entry->d_name) + 1;
 
-				compile_commands subdir_commands =
-					get_compile_commands_for_directory(subdir_path, new_target_path, project);
+				if (is_subdir) { subdir_prefix_length += strlen(object_file_prefix); }
 
-				combine_compile_commands(&commands, subdir_commands);
-				break;
+				char subdir_prefix[subdir_prefix_length];
+
+				snprintf(subdir_prefix,
+						 subdir_prefix_length,
+						 "%s%s_",
+						 is_subdir ? object_file_prefix : "",
+						 entry->d_name);
+
+				compile_commands subdir_commands;
+				if (!get_compile_commands_for_directory(subdir_path,
+														target_path,
+														true,
+														subdir_prefix,
+														project,
+														&subdir_commands)) {
+					fprintf(stderr, "Failed to get compile all_subdir_commands for files in: %s", subdir_path);
+					return false;
+				}
+
+				combine_compile_commands(&all_subdir_commands, subdir_commands);
+			} break;
 			default:
 				break;
 		}
 	}
 
-	command                = first_command;
-	commands.command_count = command_count;
-	commands.commands      = calloc(command_count, sizeof(char *));
+	command                     = first_command;
+	out_commands->command_count = command_count;
+	out_commands->commands      = calloc(command_count, sizeof(compile_command));
 	for (size_t i = 0; i < command_count; ++i) {
-		commands.commands[i].command = command->command;
+		out_commands->commands[i].command = command->command;
 
 		struct command *next = command->next;
 		free(command);
 		command = next;
 	}
 
+	combine_compile_commands(out_commands, all_subdir_commands);
+
+	free(full_source_path);
+	free(full_target_path);
+
 	closedir(dir);
-	return commands;
+	return true;
 }
 
 void combine_compile_commands(compile_commands *dest, compile_commands source) {
 	size_t new_count = dest->command_count + source.command_count;
 
-	dest->commands = reallocarray(dest->commands, new_count, sizeof(char *));
-	memcpy(&dest->commands[dest->command_count], source.commands, source.command_count * sizeof(char *));
+	dest->commands = reallocarray(dest->commands, new_count, sizeof(compile_command));
+	memcpy(&dest->commands[dest->command_count], source.commands, source.command_count * sizeof(compile_command));
 
 	dest->command_count = new_count;
 }
@@ -164,33 +195,50 @@ void combine_compile_commands(compile_commands *dest, compile_commands source) {
 bool compile_dependencies(const char *clone_dir, const char *build_dir) {
 	DIR *dir;
 	if ((dir = opendir(clone_dir)) == NULL) {
-		fprintf(stderr, "Could not open directory: '%s'", clone_dir);
+		fprintf(stderr, "Could not open directory: '%s'\n", clone_dir);
 		return false;
 	}
 
 	bool success = true;
 
+	char *full_clone_dir = realpath(clone_dir, NULL);
+	char *full_build_dir = realpath(build_dir, NULL);
+
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
-		char *dependency_clone_dir = realpath(clone_dir, NULL);
-		char dependency_dir[sizeof(dependency_clone_dir) + sizeof(entry->d_name) + 1];
-		sprintf(dependency_dir, "%s/%s", clone_dir, entry->d_name);
+		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+		printf("Compiling dependency: %s\n", entry->d_name);
 
-		char *build_dir = realpath(build_dir, NULL);
-		char dependency_target_dir[sizeof(build_dir) + sizeof(entry->d_name) + 1 + 60];
-		sprintf(dependency_target_dir, "%s/%s", build_dir, entry->d_name);
+		char dependency_clone_dir[sizeof(full_clone_dir) + sizeof(entry->d_name) + 1];
+		sprintf(dependency_clone_dir, "%s/%s", full_clone_dir, entry->d_name);
+
+		char dependency_build_dir[sizeof(full_build_dir) + sizeof(entry->d_name) + 1 + 60];
+		sprintf(dependency_build_dir, "%s/%s", full_build_dir, entry->d_name);
 
 		kinetic_project dependency_project = {0};
-		if (!kinetic_project_from_dir(dependency_dir, &dependency_project)) { return false; }
+		if (!kinetic_project_from_dir(dependency_clone_dir, &dependency_project)) {
+			fprintf(stderr, "Failed to parse dependency project at: %s\n", dependency_clone_dir);
+			return false;
+		}
 
-		char dependency_source_dir[sizeof(dependency_dir) + 4];
-		sprintf(dependency_source_dir, "%s/src", dependency_dir);
+		char dependency_source_dir[sizeof(dependency_clone_dir) + 4];
+		sprintf(dependency_source_dir, "%s/src", dependency_clone_dir);
 
-		compile_commands dependency_commands =
-			get_compile_commands_for_directory(dependency_source_dir, dependency_target_dir, dependency_project);
+		compile_commands dependency_commands = {};
+		if (!get_compile_commands_for_directory(dependency_source_dir,
+												dependency_build_dir,
+												false,
+												"",
+												dependency_project,
+												&dependency_commands)) {
+			fprintf(stderr, "Failed to get compile commands for dependency: %s\n", dependency_project.name);
+		}
 
 		success &= run_commands(dependency_commands);
 	}
+
+	free(full_clone_dir);
+	free(full_build_dir);
 
 	return success;
 }
